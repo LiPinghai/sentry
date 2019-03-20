@@ -9,6 +9,9 @@ from sentry.db.models import FlexibleForeignKey, Model, sane_repr
 from sentry.utils.hashlib import md5_text
 
 
+MAX_RECENT_SEARCHES = 30
+
+
 class RecentSearch(Model):
     """
     Searches run by users recently.
@@ -29,6 +32,21 @@ class RecentSearch(Model):
         unique_together = (('user', 'organization', 'type', 'query_hash'),)
 
     __repr__ = sane_repr('organization_id', 'user_id', 'type', 'query')
+
+
+def remove_excess_recent_searches(organization, user, search_type):
+    """
+    Remove any excess recent searches. We do this by sorting by `last_seen`
+    descending and removing any rows after the `MAX_RECENT_SEARCHES` row. In
+    practice this should only be removing a single row at most.
+    """
+    recent_searches = RecentSearch.objects.filter(
+        organization=organization,
+        user=user,
+        type=search_type,
+    ).order_by('-last_seen')[MAX_RECENT_SEARCHES:]
+    for recent_search in recent_searches:
+        recent_search.delete()
 
 
 @receiver(pre_save, sender=RecentSearch)
